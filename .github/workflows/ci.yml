@@ -1,0 +1,42 @@
+name: CI
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Check JavaScript syntax
+        run: node --check app.js
+      - name: Validate HTML references and image assets
+        run: |
+          python3 - <<'PY'
+          from html.parser import HTMLParser
+          from pathlib import Path
+          class Page(HTMLParser):
+              def __init__(self):
+                  super().__init__()
+                  self.references = []
+              def handle_starttag(self, tag, attrs):
+                  values = dict(attrs)
+                  if tag == 'script' and values.get('src'):
+                      self.references.append(values['src'])
+                  if tag == 'link' and values.get('href'):
+                      self.references.append(values['href'])
+          page = Page()
+          page.feed(Path('index.html').read_text())
+          required = page.references + ['images/blank.png', 'images/white.png', 'images/fries.png', 'images/cheeseburger.png', 'images/ice-cream.png', 'images/pizza.png', 'images/milkshake.png', 'images/hotdog.png']
+          missing = [path for path in required if not Path(path).is_file()]
+          if missing:
+              raise SystemExit('Missing assets: ' + ', '.join(missing))
+          print('HTML references and game image assets exist.')
+          PY
